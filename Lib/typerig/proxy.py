@@ -1,5 +1,4 @@
 # MODULE: Fontlab 6 Proxy | Typerig
-# VER 	: 0.69
 # ----------------------------------------
 # (C) Vassil Kateliev, 2017 (http://www.kateliev.com)
 # (C) Karandash Type Foundry (http://www.karandash.eu)
@@ -8,6 +7,8 @@
 
 # No warranties. By using this you agree
 # that you use it at your own risk!
+
+__version__ = '0.72.5'
 
 # - Dependencies --------------------------
 import fontlab as fl6
@@ -382,6 +383,33 @@ class pNode(object):
 	def getSmartAngleRadius(self):
 		return self.fl.smartAngleR
 
+class pNodesContainer(object):
+	'''Abstract nodes container
+
+	Constructor:
+		pNodesContainer(list(flNode))
+
+	Attributes:
+		
+	'''
+	def __init__(self, nodeList):
+		self.nodes = nodeList
+		self.bounds = self.getBounds()
+
+	def __repr__(self):
+		return '<%s (%s, %s, %s, %s) nodes=%s>' %(self.__class__.__name__, self.bounds.x, self.bounds.y, self.bounds.width, self.bounds.height, len(self.nodes))
+
+	def getPosition(self):
+		return [(node.x, node.y) for node in self.nodes]
+
+	def getCoord(self):
+		from typerig.brain import Coord
+		return [Coord(node) for node in self.nodes]
+
+	def getBounds(self):
+		from typerig.brain import bounds
+		return bounds(self.getPosition())
+
 class pContour(object):
 	'''Proxy to flContour object
 
@@ -481,6 +509,12 @@ class pShape(object):
 		self.currentName = self.fl.name
 		self.name = self.shapeData.name
 
+		self.bounds = lambda: self.fl.boundingBox
+		self.x = lambda : self.bounds().x()
+		self.y = lambda : self.bounds().y()
+		self.width = lambda : self.bounds().width()
+		self.height  = lambda : self.bounds().height()
+
 		self.parent = glyph
 		self.layer = layer
 
@@ -509,6 +543,13 @@ class pShape(object):
 
 	def isChanged(self):
 		return self.data().hasChanges
+
+	def update(self):
+		return self.fl.update()
+
+	# - Management ---------------------------------
+	def setName(self, shape_name):
+		self.data().name = shape_name
 
 	# - Position, composition ---------------------------------
 	def decompose(self):
@@ -556,16 +597,25 @@ class pShape(object):
 		self.fl.update()
 
 	# - Transformation ----------------------------------------
-	def shift(self, dx, dy):
+	def reset_transform(self):
+		temp_transform = self.fl.transform
+		temp_transform.reset()
+		self.fl.transform = temp_transform
+
+	def shift(self, dx, dy, reset=False):
+		if reset: self.reset_transform()
 		self.fl.transform = self.fl.transform.translate(dx, dy)
 
-	def rotate(self, angle):
+	def rotate(self, angle, reset=False):
+		if reset: self.reset_transform()
 		self.fl.transform = self.fl.transform.rotate(angle)
 
-	def scale(self, sx, sy):
+	def scale(self, sx, sy, reset=False):
+		if reset: self.reset_transform()
 		self.fl.transform = self.fl.transform.scale(sx, sy)
 
-	def shear(self, sh, sv):
+	def shear(self, sh, sv, reset=False):
+		if reset: self.reset_transform()
 		self.fl.transform = self.fl.transform.shear(sh, sv)
 	
 
@@ -633,6 +683,8 @@ class pGlyph(object):
 		return '<%s name=%s index=%s unicode=%s>' % (self.__class__.__name__, self.name, self.index, self.unicode)
 
 	# - Basics -----------------------------------------------
+	def version(self): return self.fl.lastModified
+
 	def activeLayer(self): return self.fl.activeLayer
 
 	def fg_activeLayer(self): return self.fg.layer
@@ -640,6 +692,8 @@ class pGlyph(object):
 	def mask(self): return self.fl.activeLayer.getMaskLayer(True)
 
 	def activeGuides(self): return self.fl.activeLayer.guidelines
+
+	def mLine(self): return self.fl.measurementLine()
 
 	def object(self): return fl6.flObject(self.fl.id)
 
@@ -763,6 +817,24 @@ class pGlyph(object):
 		else:
 			return [extend(shape) for shape in self.layer(layer).shapes]
 
+	def dereference(self, layer=None):
+		'''Remove all shape references but leave components.
+		Args:
+			layer (int or str): Layer index or name. If None returns ActiveLayer
+		Returns:
+			list[flShapes]
+		'''
+		wLayer = self.layer(layer)
+		shapes = self.shapes(layer)
+		components = self.containers(layer)
+		only_shapes = [shape for shape in shapes if shape not in components]
+		clones = [shape.cloneTopLevel() for shape in only_shapes]
+
+		wLayer.removeAllShapes()
+		for clone in clones: wLayer.addShape(clone)
+
+		return clones
+
 	def containers(self, layer=None, extend=None):
 		'''Return all complex shapes that contain other shapes at given layer.
 		Args:
@@ -774,6 +846,16 @@ class pGlyph(object):
 			return [shape for shape in self.layer(layer).shapes if len(shape.includesList)]
 		else:
 			return [extend(shape) for shape in self.layer(layer).shapes if len(shape.includesList)]
+
+	def decompose(self, layer=None):
+		'''Decompose all complex shapes that contain other shapes at given layer.
+		Args:
+			layer (int or str): Layer index or name. If None returns ActiveLayer
+		Returns:
+			None
+		'''
+		for container in self.containers(layer):
+			container.decomposite()
 
 	def getBuilders(self, layer=None, store=False):
 		shape_builders = {}
@@ -799,6 +881,27 @@ class pGlyph(object):
 			return self.layer(layer).addShape(shape.cloneTopLevel())
 		else:
 			return self.layer(layer).addShape(shape)
+
+	def replaceShape(self, old_shape, new_shape, layer=None):
+		'''Repalce a shape at given layer.
+		Args:
+			old_shape, new_shape (flShape): Shapes
+			layer (str): Layer name
+		Returns:
+			None
+		'''
+		self.layer(layer).replaceShape(old_shape, new_shape)
+
+	def removeShape(self, shape, layer=None, recursive=True):
+		'''Remove a new shape at given layer.
+		Args:
+			old_shape, new_shape (flShape): Shapes
+			layer (str): Layer name
+			recursive (bool): 
+		Returns:
+			None
+		'''
+		self.layer(layer).removeShape(shape, recursive)
 
 	def addShapeContainer(self, shapeList, layer=None, remove=True):
 		'''Add a new shape container* at given layer.
@@ -968,6 +1071,11 @@ class pGlyph(object):
 		from itertools import combinations
 		return all([layerA.isCompatible(layerB, strong) for layerA, layerB in combinations(self.masters(), 2)])
 
+	def isMixedReference(self):
+		'''Test if glyph has mixed references - components on some layers and referenced shapes on others'''
+		from itertools import combinations
+		return not all([len(self.components(layerA.name))==len(self.components(layerB.name)) for layerA, layerB in combinations(self.masters(), 2)])
+
 	def reportLayerComp(self, strong=False):
 		'''Returns a layer compatibility report'''
 		from itertools import combinations
@@ -983,15 +1091,7 @@ class pGlyph(object):
 		# !TODO: Undo?
 		if fl:self.fl.update()
 		if fg:self.fg.update()
-
-		'''
-		#!!!NOTE: Problem/bug does not accept Long ID's produced by Python 64 + FL6 64
-		if sys64bit:
-			fl6.flItems.notifyGlyphUpdated(self.fg.id, self.fg.id) 
-		else:
-			fl6.flItems.notifyGlyphUpdated(self.package.id, self.id) 
-		'''
-
+	
 	def updateObject(self, flObject, undoMessage='TypeRig', verbose=True):
 		'''Updates a flObject sends notification to the editor as well as undo/history item.
 		Args:
@@ -1091,6 +1191,30 @@ class pGlyph(object):
 			return [(allShapes.index(shape), allContours.index(contour), node.index) for shape in allShapes for contour in shape.contours for node in contour.nodes() if node in self.selectedNodes(layer=layer, filterOn=filterOn, deep=deep)]
 		else:
 			return [(shape, contour, node) for shape in allShapes for contour in shape.contours for node in contour.nodes() if node in self.selectedNodes(layer=layer, filterOn=filterOn, deep=deep)]
+
+	def selectedShapeIndices(self, select_all=False, deep=False):
+		'''Return all indices of nodes selected at current layer.
+		Args:
+			select_all (bool): True all nodes on Shape should be selected. False any node will do.
+		Returns:
+			list[int]
+		'''
+		selection_mode = ['AnyNodeSelected', 'AllContourSelected'][select_all]
+		allShapes = self.shapes() if not deep else self.components()
+
+		return [allShapes.index(shape) for shape in allShapes if shape.hasSelected(selection_mode)]
+		
+
+	def selectedShapes(self, layer=None, select_all=False, deep=False, extend=None):
+		'''Return all shapes that have a node selected.
+		'''
+		selection_mode = ['AnyNodeSelected', 'AllContourSelected'][select_all]
+		allShapes = self.shapes(layer) if not deep else self.components(layer)
+
+		if extend is None:
+			return [allShapes[sid] for sid in self.selectedShapeIndices(select_all, deep)]
+		else:
+			return [extend(allShapes[sid]) for sid in self.selectedShapeIndices(select_all, deep)]
 
 	def selectedCoords(self, layer=None, filterOn=False, applyTransform=False):
 		'''Return the coordinates of all selected nodes at the current layer or other.

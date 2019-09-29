@@ -12,7 +12,7 @@ global pLayers
 global pMode
 pLayers = None
 pMode = 0
-app_name, app_version = 'TypeRig | Nodes', '0.66'
+app_name, app_version = 'TypeRig | Nodes', '0.70'
 
 # - Dependencies -----------------
 import fontlab as fl6
@@ -236,6 +236,7 @@ class alignNodes(QtGui.QGridLayout):
 		self.btn_toXHeight = QtGui.QPushButton('X Hgt.')
 		self.btn_toBaseline = QtGui.QPushButton('Base')
 		self.btn_toYpos = QtGui.QPushButton('Y Pos')
+		self.btn_toMpos = QtGui.QPushButton('Measure')
 		self.btn_solveY = QtGui.QPushButton('Lineup Min/Max Y')
 		self.btn_solveX = QtGui.QPushButton('Lineup Min/Max X')
 		self.btn_copy = QtGui.QPushButton('Copy Slope')
@@ -264,7 +265,8 @@ class alignNodes(QtGui.QGridLayout):
 		self.btn_toDescender.setToolTip('Send selected nodes to Descender height.')
 		self.btn_toXHeight.setToolTip('Send selected nodes to X Height.')
 		self.btn_toBaseline.setToolTip('Send selected nodes to Baseline.')
-		self.btn_toYpos.setToolTip('Send selected nodes to Tagged Guideline.')
+		self.btn_toYpos.setToolTip('Send selected nodes to Y coordinate.')
+		self.btn_toMpos.setToolTip('Send selected nodes to Measurment Line.\nSHIFT + Click switch intercept.')
 
 		self.btn_alignLayer_V = QtGui.QPushButton('Vertical')
 		self.btn_alignLayer_H = QtGui.QPushButton('Horizontal')
@@ -341,6 +343,7 @@ class alignNodes(QtGui.QGridLayout):
 		self.btn_toXHeight.clicked.connect(lambda: self.alignNodes('FontMetrics_3'))
 		self.btn_toBaseline.clicked.connect(lambda: self.alignNodes('FontMetrics_4'))
 		self.btn_toYpos.clicked.connect(lambda: self.alignNodes('FontMetrics_5'))
+		self.btn_toMpos.clicked.connect(lambda: self.alignNodes('FontMetrics_6'))
 		self.btn_alignLayer_V.clicked.connect(lambda: self.alignNodes('Layer_V'))
 		self.btn_alignLayer_H.clicked.connect(lambda: self.alignNodes('Layer_H'))
 
@@ -358,16 +361,18 @@ class alignNodes(QtGui.QGridLayout):
 		self.addWidget(self.btn_bboxCenterY,	1,2,1,2)
 		self.addWidget(self.btn_peerCenterX,	2,0,1,2)
 		self.addWidget(self.btn_peerCenterY,	2,2,1,2)
-		self.addWidget(QtGui.QLabel('Align to Font metrics'), 3,0,1,2)
-		self.addWidget(self.btn_toAscender,		4,0)
-		self.addWidget(self.btn_toCapsHeight,	4,1)
-		self.addWidget(self.btn_toDescender,	4,2)
-		self.addWidget(self.btn_toXHeight,		4,3)
-		self.addWidget(self.btn_toBaseline,		5,0)
-		self.addWidget(self.edt_toYpos,			5,1)
-		self.addWidget(self.btn_toYpos,			5,2)
-		self.addWidget(self.chk_slope, 			5,3)
-		self.addWidget(QtGui.QLabel('Align to Glyph Layer'), 	6, 0, 1, 4)
+		self.addWidget(QtGui.QLabel('Align to Font & Glyph metrics'), 3,0,1,2)
+		self.addWidget(self.btn_toAscender,		4,0,1,1)
+		self.addWidget(self.btn_toCapsHeight,	4,1,1,1)
+		self.addWidget(self.btn_toDescender,	4,2,1,1)
+		self.addWidget(self.btn_toXHeight,		4,3,1,1)
+		self.addWidget(self.btn_toBaseline,		5,0,1,1)
+		self.addWidget(self.edt_toYpos,			5,1,1,1)
+		self.addWidget(self.btn_toYpos,			5,2,1,1)
+		self.addWidget(self.btn_toMpos, 		5,3,1,1)
+		self.addWidget(self.chk_slope, 			6,0,1,4)
+
+		#self.addWidget(QtGui.QLabel('Align to Glyph Layer'), 	6, 0, 1, 4)
 		self.addWidget(self.cmb_select_V, 						7, 0)
 		self.addWidget(self.spb_prc_V, 							7, 1)
 		self.addWidget(self.spb_unit_V, 						7, 2)
@@ -458,6 +463,7 @@ class alignNodes(QtGui.QGridLayout):
 
 	def alignNodes(self, mode):
 		process_glyphs = getProcessGlyphs(pMode)
+		modifiers = QtGui.QApplication.keyboardModifiers()
 
 		for glyph in process_glyphs:
 			wLayers = glyph._prepareLayers(pLayers)
@@ -510,22 +516,26 @@ class alignNodes(QtGui.QGridLayout):
 
 					if '0' in mode:
 						newY = layerMetrics.ascender
-						toMaxY = False
+						toMaxY = True if modifiers == QtCore.Qt.ShiftModifier else False 
 					elif '1' in mode:
 						newY = layerMetrics.capsHeight
-						toMaxY = False
+						toMaxY = True if modifiers == QtCore.Qt.ShiftModifier else False 
 					elif '2' in mode:
 						newY = layerMetrics.descender
-						toMaxY = True
+						toMaxY = False if modifiers == QtCore.Qt.ShiftModifier else True 
 					elif '3' in mode:
 						newY = layerMetrics.xHeight
-						toMaxY = False
+						toMaxY = True if modifiers == QtCore.Qt.ShiftModifier else False 
 					elif '4' in mode:
 						newY = 0
-						toMaxY = True
+						toMaxY = False if modifiers == QtCore.Qt.ShiftModifier else True 
 					elif '5' in mode:
 						newY = self.edt_toYpos.value
-						toMaxY = True #self.edt_toYpos.value >= 0
+						toMaxY = False if modifiers == QtCore.Qt.ShiftModifier else True 
+					elif '6' in mode:
+						newY = glyph.mLine()
+						toMaxY = newY >= 0 
+						if modifiers == QtCore.Qt.ShiftModifier: toMaxY = not toMaxY
 
 				elif mode == 'Layer_V':
 					if 'BBox' in self.cmb_select_V.currentText:
@@ -988,69 +998,75 @@ class advMovement(QtGui.QVBoxLayout):
 
 	def moveNodes(self, offset_x, offset_y, method, inPercent):
 		# - Init
-		glyph = eGlyph()
 		font = pFont()
-		selectedNodes = glyph.selectedNodes(extend=eNode)
+		glyph = eGlyph()
 		italic_angle = font.getItalicAngle()
-		
-		# -- Scaling move - coordinates as percent of position
-		def scaleOffset(node, off_x, off_y):
-			return (-node.x + width*(float(node.x)/width + offset_x), -node.y + height*(float(node.y)/height + offset_y))
 
-		width = glyph.layer().boundingBox.width() # glyph.layer().advanceWidth
-		height = glyph.layer().boundingBox.height() # glyph.layer().advanceHeight
+		process_glyphs = getProcessGlyphs(pMode)
 
-		# - Process
-		if method == self.methodList[0]:
-			for node in selectedNodes:
-				if node.isOn:
-					if inPercent:						
-						node.smartShift(*scaleOffset(node, offset_x, offset_y))
+		for glyph in process_glyphs:
+			wLayers = glyph._prepareLayers(pLayers)
+
+			for layer in wLayers:
+				selectedNodes = glyph.selectedNodes(layer=layer, extend=eNode)
+				
+				
+				# -- Scaling move - coordinates as percent of position
+				def scaleOffset(node, off_x, off_y):
+					return (-node.x + width*(float(node.x)/width + offset_x), -node.y + height*(float(node.y)/height + offset_y))
+
+				width = glyph.layer(layer).boundingBox.width() # glyph.layer().advanceWidth
+				height = glyph.layer(layer).boundingBox.height() # glyph.layer().advanceHeight
+
+				# - Process
+				if method == self.methodList[0]:
+					for node in selectedNodes:
+						if node.isOn:
+							if inPercent:						
+								node.smartShift(*scaleOffset(node, offset_x, offset_y))
+							else:
+								node.smartShift(offset_x, offset_y)
+
+				elif method == self.methodList[1]:
+					for node in selectedNodes:
+						if inPercent:						
+							node.shift(*scaleOffset(node, offset_x, offset_y))
+						else:
+							node.shift(offset_x, offset_y)
+
+				elif method == self.methodList[2]:
+					for node in selectedNodes:
+						if inPercent:						
+							node.interpShift(*scaleOffset(node, offset_x, offset_y))
+						else:
+							node.interpShift(offset_x, offset_y)
+
+				elif method == self.methodList[3]:
+					if italic_angle != 0:
+						for node in selectedNodes:
+							if inPercent:						
+								node.slantShift(*scaleOffset(node, offset_x, offset_y))
+							else:
+								node.slantShift(offset_x, offset_y, italic_angle)
 					else:
-						node.smartShift(offset_x, offset_y)
+						for node in selectedNodes:
+							if inPercent:						
+								node.smartShift(*scaleOffset(node, offset_x, offset_y))
+							else:
+								node.smartShift(offset_x, offset_y)
 
-		elif method == self.methodList[1]:
-			for node in selectedNodes:
-				if inPercent:						
-					node.shift(*scaleOffset(node, offset_x, offset_y))
-				else:
-					node.shift(offset_x, offset_y)
+				elif method == self.methodList[4]:			
+					current_layer = glyph.activeLayer().name
 
-		elif method == self.methodList[2]:
-			for node in selectedNodes:
-				if inPercent:						
-					node.interpShift(*scaleOffset(node, offset_x, offset_y))
-				else:
-					node.interpShift(offset_x, offset_y)
-
-		elif method == self.methodList[3]:
-			if italic_angle != 0:
-				for node in selectedNodes:
-					if inPercent:						
-						node.slantShift(*scaleOffset(node, offset_x, offset_y))
+					if len(self.aux.copyLine) and current_layer in self.aux.copyLine:
+						for node in selectedNodes:
+							node.slantShift(offset_x, offset_y, -90 + self.aux.copyLine[current_layer].getAngle())				
 					else:
-						node.slantShift(offset_x, offset_y, italic_angle)
-			else:
-				for node in selectedNodes:
-					if inPercent:						
-						node.smartShift(*scaleOffset(node, offset_x, offset_y))
-					else:
-						node.smartShift(offset_x, offset_y)
+						print 'ERROR:\tNo slope information for layer found!\nNOTE:\tPlease <<Copy Slope>> first using TypeRig Node align toolbox.'
 
-		elif method == self.methodList[4]:			
-			current_layer = glyph.activeLayer().name
-
-			if len(self.aux.copyLine) and current_layer in self.aux.copyLine:
-				for node in selectedNodes:
-					node.slantShift(offset_x, offset_y, -90 + self.aux.copyLine[current_layer].getAngle())				
-			else:
-				print 'ERROR:\tNo slope information for Active layer found!\nNOTE:\tPlease <<Copy Slope>> first using TypeRig Node align toolbox.'
-
-		# - Set Undo
-		glyph.updateObject(glyph.activeLayer(), '%s @ %s.' %(method, glyph.activeLayer().name), verbose=False)
-
-		# - Finish it
-		glyph.update()
+			# - Finish it
+			glyph.update()
+			glyph.updateObject(glyph.fl, 'Node: %s @ %s.' %(method, '; '.join(wLayers)))
 
 	def onUp(self):
 		self.moveNodes(.0, float(self.edt_offY.text), method=str(self.cmb_methodSelector.currentText), inPercent=self.chk_percent.isChecked())

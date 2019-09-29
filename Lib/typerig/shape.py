@@ -1,4 +1,4 @@
-# MODULE: Fontlab 6 Custom Contour Objects | Typerig
+# MODULE: Fontlab 6 Custom Shape Objects | Typerig
 # ----------------------------------------
 # (C) Vassil Kateliev, 2019 (http://www.kateliev.com)
 # (C) Karandash Type Foundry (http://www.karandash.eu)
@@ -15,13 +15,13 @@ import fontlab as fl6
 #import fontgate as fgt
 import PythonQt as pqt
 
-from typerig.proxy import pContour
+from typerig.proxy import pShape
 
-class eContour(pContour):
-	'''Extended representation of the Proxy Contour, adding some advanced functionality.
+class eShape(pShape):
+	'''Extended representation of the Proxy Shape, adding some advanced functionality.
 
 	Constructor:
-		eContour(flContour)
+		eShape(flShape)
 		
 	'''
 	# - Extension -----------------------
@@ -67,9 +67,9 @@ class eContour(pContour):
 			if any([isinstance(entity, item) for item in [fl6.flNode, pNode, Coord, QPointF]]):
 				target = Coord(entity.x, entity.y)
 
-			elif any([isinstance(entity, item) for item in [fl6.flContour, pContour, self.__class__]]):
+			elif any([isinstance(entity, item) for item in [fl6.flShape, pShape, self.__class__]]):
 				
-				if isinstance(entity, fl6.flContour):
+				if isinstance(entity, fl6.flShape):
 					temp_entity = self.__class__(entity)
 				else:
 					temp_entity = entity
@@ -86,7 +86,7 @@ class eContour(pContour):
 			shift_dx = abs(shift.x)*[1,-1][source.x > target.x] if align[0] else 0.
 			shift_dy = abs(shift.y)*[1,-1][source.y > target.y] if align[1] else 0.
 
-			self.shift(shift_dx, shift_dy)
+			self.shift(shift_dx, shift_dy, True)
 		else:
 			print 'ERROR:\t Invalid Align Mode: %s' %alignMode
 

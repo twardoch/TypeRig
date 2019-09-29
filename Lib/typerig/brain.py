@@ -1,5 +1,4 @@
 # MODULE: Brain | Typerig
-# VER 	: 2.57
 # ----------------------------------------
 # (C) Vassil Kateliev, 2018  (http://www.kateliev.com)
 # (C) Karandash Type Foundry (http://www.karandash.eu)
@@ -13,6 +12,8 @@
 
 # No warranties. By using this you agree
 # that you use it at your own risk!
+
+__version__ = '0.25.8'
 
 # - Dependancies -----------------
 import math
@@ -161,6 +162,30 @@ def intersect(A,B,C,D):
 	return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
 
 # - Classes --------------------------------------------------------------------
+class bounds(object):
+	def __init__(self, tupleList):
+		self.x, self.xmax = 0, 0
+		self.y, self.ymax = 0, 0
+		self.width, self.height = 0, 0
+		self.refresh(tupleList)
+
+	def recalc(self, tupleList):
+		from operator import itemgetter
+		min_x_tup = min(tupleList,key=itemgetter(0))
+		min_y_tup = min(tupleList,key=itemgetter(1))
+		max_x_tup = max(tupleList,key=itemgetter(0))
+		max_y_tup = max(tupleList,key=itemgetter(1))
+		return (min_x_tup, min_y_tup, max_x_tup, max_y_tup)
+
+	def refresh(self, tupleList):
+		min_x_tup, min_y_tup, max_x_tup, max_y_tup = self.recalc(tupleList)
+		self.x = min_x_tup[0]
+		self.y = min_y_tup[1]
+		self.xmax = max_x_tup[0]
+		self.ymax = max_y_tup[1]
+		self.width = abs(self.xmax - self.x)
+		self.height = abs(self.ymax - self.y)
+		
 class biDict(dict):
 	'''
 	Bi-directioanl dictionary partly based on Basj answer st:
@@ -735,6 +760,10 @@ class _Line(object):
 
 	def __repr__(self):
 		return '<Line: (%s,%s),(%s,%s)>' %(self.p0.x, self.p0.y, self.p1.x, self.p1.y)
+
+	def getLenght(self):
+		from math import hypot
+		return hypot(self.p0.x - self.p1.x, self.p0.y - self.p1.y)
 
 	def getSlope(self):
 		try:
