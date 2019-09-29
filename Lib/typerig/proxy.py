@@ -8,7 +8,7 @@
 # No warranties. By using this you agree
 # that you use it at your own risk!
 
-__version__ = '0.72.5'
+from __version__ import __version__
 
 # - Dependencies --------------------------
 import fontlab as fl6

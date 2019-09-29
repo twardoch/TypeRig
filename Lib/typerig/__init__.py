@@ -8,6 +8,6 @@
 # No warranties. By using this you agree
 # that you use it at your own risk!
 
-from proxy import __version__ as current_ver
+from __version__ import __version__ as current_ver
 
 __version__ = current_ver
